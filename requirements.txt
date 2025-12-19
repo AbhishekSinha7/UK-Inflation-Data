@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-pydantic
 requests
 pandas
+openpyxl
 mysql-connector-python
 pymysql
+pydantic
