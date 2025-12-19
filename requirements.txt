@@ -1,5 +1,7 @@
 fastapi
-pydantic
-pymysql
 uvicorn
+pydantic
 requests
+pandas
+mysql-connector-python
+pymysql
