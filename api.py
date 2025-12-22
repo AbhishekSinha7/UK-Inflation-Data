@@ -94,55 +94,80 @@ def verify_api_key(key: str = Security(api_key_header), conn = Depends(get_db)) 
         raise HTTPException(status_code=403, detail="User is inactive")
     return user
 
+def normalize_ons_value(val):
+    if pd.isna(val):
+        return None
+
+    if isinstance(val, str):
+        val = val.strip()
+        if val == "-":
+            return 0.0
+        if val == "..":
+            return None
+
+    try:
+        return float(val)
+    except:
+        return None
+
+def is_valid_year(val):
+    return (
+        not pd.isna(val)
+        and isinstance(val, (int, float, str))
+        and str(val).isdigit()
+        and 1900 <= int(val) <= 2100
+    )
+
 def getCpiData(xls):
     df_Cpi = pd.read_excel(xls, sheet_name=CPI_SHEET_NAME, header=5)
-    
-    # Find index of the first row where ALL columns are empty
     records = df_Cpi.to_dict(orient="records")
+
     observations = {}
     prcntChngTweleveMonths = {}
     prcntChngOneMonths = {}
 
+    section = -1
+    prev_row_invalid = True
+
     for row in records:
+        year_val = row.get("Unnamed: 1")
+        valid_year = is_valid_year(year_val)
 
-        # Year is stored in "Unnamed: 1"
-        year_value = row.get("Unnamed: 1")
+        if valid_year and prev_row_invalid:
+            section += 1
 
-        # Skip rows where year is missing or non-numeric
-        if pd.isna(year_value) or not isinstance(year_value, (int, float)) or not (1000 <= int(year_value) <= 9999):
+        prev_row_invalid = not valid_year
+
+        if not valid_year:
             continue
 
-        year_key = int(year_value)
+        year = int(year_val)
         month_values = {}
 
-        for col_name, value in row.items():
-
-            # Skip year + row-label column
-            if col_name in ("Unnamed: 0", "Unnamed: 1"):
+        for col, val in row.items():
+            if col in ("Unnamed: 0", "Unnamed: 1"):
                 continue
 
-            clean_key = col_name.strip().lower()
-            
-            clean_value = None if pd.isna(value) else value
+            key = col.strip().lower()
+            month_values[key] = normalize_ons_value(val)
 
-            month_values[clean_key] = clean_value
+        if section == 0:
+            observations[year] = month_values
 
-        if year_key not in observations:
-            observations[year_key] = month_values
+        elif section == 1:
+            prcntChngTweleveMonths[year] = month_values
 
-        elif year_key not in prcntChngTweleveMonths:
-            prcntChngTweleveMonths[year_key] = month_values
-
-        elif year_key not in prcntChngOneMonths:
-            # to shift values by 1
+        elif section == 2:
+            # Shift values by one month
             keys = list(month_values.keys())
             values = list(month_values.values())
             shifted_values = [None] + values[:-1]
-            prcntChngOneMonths[year_key] = dict(zip(keys, shifted_values))
-    
-    insertData(observations, 'cpi_observations', True)
-    insertData(prcntChngTweleveMonths, 'cpi_twelve_month_percent_change', True)
-    insertData(prcntChngOneMonths, 'cpi_one_month_percent_change', False)
+            prcntChngOneMonths[year] = dict(zip(keys, shifted_values))
+
+    insertData(observations, 'cpi_observations', True, True)
+    insertData(prcntChngTweleveMonths, 'cpi_twelve_month_percent_change', True, False)
+    insertData(prcntChngOneMonths, 'cpi_one_month_percent_change', False, False)
+
 
 def getCpihData(xls):
     df_Cpih = pd.read_excel(xls, sheet_name=CPIH_SHEET_NAME, header=5)
@@ -152,50 +177,55 @@ def getCpihData(xls):
     prcntChngTweleveMonths = {}
     prcntChngOneMonths = {}
 
-    for row in records:
-        year_value = row.get("Unnamed: 1")
+    section = -1
+    prev_row_invalid = True
 
-        # Skip metadata rows such as "2015=100"
-        if pd.isna(year_value) or not isinstance(year_value, (int, float)) or not (1000 <= int(year_value) <= 9999):
+    for row in records:
+        year_val = row.get("Unnamed: 1")
+        valid_year = is_valid_year(year_val)
+
+        if valid_year and prev_row_invalid:
+            section += 1
+
+        prev_row_invalid = not valid_year
+
+        if not valid_year:
             continue
 
-        year_key = int(year_value)
-       
+        year = int(year_val)
         month_values = {}
+
         for col, val in row.items():
             if col in ("Unnamed: 0", "Unnamed: 1"):
-                continue  # skip this columns
+                continue
 
-            clean_col = col.strip().lower()
-            clean_val = None if pd.isna(val) else val
-
-            month_values[clean_col] = clean_val
-
-        if year_key not in observations:
-            observations[year_key] = month_values
-
-        elif year_key not in prcntChngTweleveMonths:
-            prcntChngTweleveMonths[year_key] = month_values
-
-        elif year_key not in prcntChngOneMonths:
+            key = col.strip().lower()
+            clean = normalize_ons_value(val)
+            month_values[key] = clean
+        
+        if section == 0:
+            observations[year] = month_values
+        elif section == 1:
+            prcntChngTweleveMonths[year] = month_values
+        elif section == 2:
             # to shift values by 1
             keys = list(month_values.keys())
             values = list(month_values.values())
             shifted_values = [None] + values[:-1]
-            prcntChngOneMonths[year_key] = dict(zip(keys, shifted_values))
+            prcntChngOneMonths[year] = dict(zip(keys, shifted_values))
 
-    insertData(observations, 'cpih_observations', True)
-    insertData(prcntChngTweleveMonths, 'cpih_twelve_month_percent_change', True)
-    insertData(prcntChngOneMonths, 'cpih_one_month_percent_change', False)
+    insertData(observations, 'cpih_observations', True, True)
+    insertData(prcntChngTweleveMonths, 'cpih_twelve_month_percent_change', True, False)
+    insertData(prcntChngOneMonths, 'cpih_one_month_percent_change', False, False)
 
 def getRpiData(xls):
     xls = getExcelFile()
     jsonData = getRpiObservations(xls)
-    insertData(jsonData, 'rpi_observations', True)
+    insertData(jsonData, 'rpi_observations', True, True)
     jsonData = getRpiPercentage12Months(xls)
-    insertData(jsonData, 'rpi_twelve_month_percent_change', True)
+    insertData(jsonData, 'rpi_twelve_month_percent_change', True, False)
     jsonData = getRpiPercentage1Months(xls)
-    insertData(jsonData, 'rpi_one_month_percent_change', False)
+    insertData(jsonData, 'rpi_one_month_percent_change', False, False)
 
 def getRpiObservations(xls):
     df_Rpih = pd.read_excel(xls, sheet_name=RPI_OBSERVATIONS_SHEET_NAME, header=5)
@@ -204,28 +234,21 @@ def getRpiObservations(xls):
     nested = {}
 
     for row in json_data:
-        # print(row)
         year_key = str(row.get("Unnamed: 2"))
-        # print(year_key)
         if not(year_key.isdigit()):
             continue 
         year_key = int(year_key)
         value_map = {}
-
+        
         for col, val in row.items():
             clean_col = col.strip().lower() 
             if "unnamed:" in clean_col:
                 continue
 
-            clean_val = None if pd.isna(val) else val # NaN → null
-
-            if isinstance(clean_val, str):
-                clean_val = clean_val.strip()
-
+            clean_val = normalize_ons_value(val)
             value_map[clean_col] = clean_val
 
         nested[year_key] = value_map
-    print(nested)
     return nested
 
 def getRpiPercentage12Months(xls):
@@ -234,29 +257,28 @@ def getRpiPercentage12Months(xls):
     nested = {}
 
     for row in json_data:
-
+        # print(row)
         year_key = str(row.get("Unnamed: 2"))
         if not(year_key.isdigit()):
             continue
         year_key = int(year_key)
 
         value_map = {}
-
         for col, val in row.items():
             clean_col = col.strip().lower()
+            print(clean_col)
             if clean_col == "unnamed: 0" or clean_col == "unnamed: 2" or clean_col == "per cent":
                 continue
-
+            
             if clean_col == "change":
-                clean_col = "annual_change"
-            clean_val = None if pd.isna(val) else val # NaN → null
-
-            if isinstance(clean_val, str):
-                clean_val = clean_val.strip()
-
+                clean_col = "average"
+            clean_val = normalize_ons_value(val)
+            # print(val)
+            # print(clean_val)
             value_map[clean_col] = clean_val
-
+        # print(value_map)
         nested[year_key] = value_map
+    # print(nested)
     return nested
 
 def getRpiPercentage1Months(xls):
@@ -266,29 +288,23 @@ def getRpiPercentage1Months(xls):
     nested = {}
     for row in json_data:
 
-        year_value = str(row.get("Unnamed: 2"))
+        year_key = str(row.get("Unnamed: 2"))
         if not(year_key.isdigit()):
             continue
-        year_key = int(year_value)
+        year_key = int(year_key)
 
         value_map = {}
-
         for col, val in row.items():
             clean_col = col.strip().lower()
             if clean_col == "unnamed: 0" or clean_col == "unnamed: 2" or clean_col == "per cent":
                 continue
 
-            clean_val = None if pd.isna(val) else val # NaN → null
-
-            if isinstance(clean_val, str):
-                clean_val = clean_val.strip()
-
+            clean_val = normalize_ons_value(val)
             value_map[clean_col] = clean_val
-
         nested[year_key] = value_map
     return nested
 
-def insertData(observations, table_name, include_annual):
+def insertData(observations, table_name, include_annual, isAnnualAverage):
     conn = mysql.connector.connect(
         host="sql12.freesqldatabase.com",
         user="sql12812238",
@@ -299,19 +315,21 @@ def insertData(observations, table_name, include_annual):
     cursor = conn.cursor()
 
     columns = ["year"]
-
     if include_annual:
-        columns.append("annual_average")
+        if isAnnualAverage:
+            columns.append("annual_average")
+        else:
+            columns.append("annual_change")
 
     columns.extend([
         "Jan","Feb","Mar","Apr","May","Jun",
         "Jul","Aug","Sep","Oct","Nov","`Dec`"
     ])
-
+    print(columns)
     column_sql = ", ".join(columns)
 
     placeholders = ", ".join(["%s"] * len(columns))
-
+    print(placeholders)
     update_columns = [col for col in columns if col != "year"]
     update_sql = ", ".join([f"{col}=VALUES({col})" for col in update_columns])
 
@@ -359,10 +377,11 @@ def get_date(user: dict = Depends(verify_api_key)):
         getCpiData(xls)
         getCpihData(xls)
         getRpiData(xls)
-        response =  {'result': 'Process successful'}
+        response =  {'result': 'Process successfull'}
 
-    except:
-        response =  {'result': 'Process unsuccessful'}
+    except Exception as e:
+        print("ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
     
     return response
 
