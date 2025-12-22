@@ -266,7 +266,7 @@ def getRpiPercentage12Months(xls):
         value_map = {}
         for col, val in row.items():
             clean_col = col.strip().lower()
-            print(clean_col)
+            # print(clean_col)
             if clean_col == "unnamed: 0" or clean_col == "unnamed: 2" or clean_col == "per cent":
                 continue
             
@@ -325,11 +325,11 @@ def insertData(observations, table_name, include_annual, isAnnualAverage):
         "Jan","Feb","Mar","Apr","May","Jun",
         "Jul","Aug","Sep","Oct","Nov","`Dec`"
     ])
-    print(columns)
+    # print(columns)
     column_sql = ", ".join(columns)
 
     placeholders = ", ".join(["%s"] * len(columns))
-    print(placeholders)
+    # print(placeholders)
     update_columns = [col for col in columns if col != "year"]
     update_sql = ", ".join([f"{col}=VALUES({col})" for col in update_columns])
 
@@ -410,3 +410,4 @@ def read_data(body: InflationRequest, user: dict = Depends(verify_api_key), conn
     clean_columns = [col.strip("`") for col in columns]
     result = [dict(zip(clean_columns, row)) for row in rows]
     return result
+
