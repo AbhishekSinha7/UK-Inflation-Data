@@ -86,8 +86,10 @@ def read_data(body: InflationRequest, user: dict = Depends(verify_api_key), conn
     cur = conn.cursor()
     columns = ["year"]
 
-    if body.subtype != "OneMonthPercentageChange":
+    if body.subtype == "Observation":
         columns.append("annual_average")
+    elif body.subtype == "TwelveMonthPercentageChange":
+        columns.append("annual_change")
 
     columns.extend([
         "`Jan`", "`Feb`", "`Mar`", "`Apr`", "`May`", "`Jun`",
