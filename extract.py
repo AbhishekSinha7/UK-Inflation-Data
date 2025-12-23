@@ -302,4 +302,7 @@ def get_data():
         getRpiData(xls)
     
     except Exception as e:
+
         print("ERROR:", e)
+if __name__ == "__main__":
+    get_data()
