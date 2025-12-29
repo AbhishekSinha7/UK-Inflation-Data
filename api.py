@@ -6,10 +6,10 @@ from fastapi.security import APIKeyHeader
 from typing import Dict
 from pydantic import BaseModel
 
-DB_USER = 'sql12812238'
-DB_PASSWORD = 'gTxAhdTlxE'
+DB_USER = 'sql12813138'
+DB_PASSWORD = 'ZgXzR3fSZw'
 DB_HOST = 'sql12.freesqldatabase.com'
-DB_NAME = 'sql12812238'
+DB_NAME = 'sql12813138'
 
 TABLE_DETAILS = {
     "CPI": {
@@ -102,3 +102,4 @@ def read_data(body: InflationRequest, user: dict = Depends(verify_api_key), conn
     clean_columns = [col.strip("`") for col in columns]
     result = [dict(zip(clean_columns, row)) for row in rows]
     return result
+
